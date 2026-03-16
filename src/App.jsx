@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Routes, Route, Link, useNavigate, useParams, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, onSnapshot, query, doc, updateDoc, where, orderBy, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
 import { 
@@ -21,15 +21,10 @@ const firebaseConfig = {
   measurementId: "G-XNXH0VQV5N"
 };
 
-// --- FIREBASE INITIALIZATION ---
-let db, auth;
-try {
-  const app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
-  auth = getAuth(app);
-} catch (error) {
-  console.error("Firebase initialization failed:", error);
-}
+// --- INITIALIZATION ---
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+const db = getFirestore(app);
+const auth = getAuth(app);
 
 // --- CONSTANTS ---
 const SERVICES = [
@@ -85,7 +80,9 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
       }
       onClose();
     } catch (err) {
-      setError(err.message);
+      setError(err.message.includes('configuration-not-found') 
+        ? "Please enable Email/Password login in your Firebase Console." 
+        : err.message);
     } finally {
       setLoading(false);
     }
@@ -96,7 +93,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
   return (
     <div className="fixed inset-0 z-[200] bg-gray-900/60 backdrop-blur-md flex items-center justify-center p-4">
       <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-[2.5rem] w-full max-w-md p-10 shadow-2xl relative">
-        <button onClick={onClose} className="absolute top-6 right-6 p-2 text-gray-400 hover:text-gray-900"><X /></button>
+        <button onClick={onClose} className="absolute top-6 right-6 p-2 text-gray-400 hover:text-gray-900 transition-colors"><X /></button>
         <h2 className="text-3xl font-black text-gray-900 mb-2">{mode === 'login' ? 'Welcome Back' : 'Create Account'}</h2>
         <p className="text-gray-500 font-bold mb-8">{mode === 'login' ? 'Log in to manage your projects.' : 'Join the ServiceFlow marketplace.'}</p>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -120,7 +117,7 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
             <Lock className="absolute left-4 top-3.5 w-5 h-5 text-gray-400" />
             <input required type="password" placeholder="Password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-none rounded-xl font-bold focus:ring-2 focus:ring-blue-100 transition-all" />
           </div>
-          {error && <p className="text-red-500 text-sm font-bold">{error}</p>}
+          {error && <p className="text-red-500 text-sm font-bold bg-red-50 p-3 rounded-lg border border-red-100">{error}</p>}
           <button disabled={loading} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black text-lg shadow-lg hover:bg-blue-700 transition-all active:scale-95">{loading ? 'Processing...' : mode === 'login' ? 'Log In' : 'Sign Up'}</button>
         </form>
         <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} className="w-full text-center mt-6 text-sm font-bold text-gray-500 hover:text-blue-600">{mode === 'login' ? "Don't have an account? Sign Up" : "Already have an account? Log In"}</button>
@@ -196,15 +193,13 @@ const Dashboard = ({ user, profile, bookings }) => {
   const myJobs = profile?.role === 'customer' ? bookings.filter(b => b.customerId === user?.uid) : bookings.filter(b => b.proId === user?.uid);
 
   const claimJob = async (id) => {
-    if (!db) return;
     try {
       await updateDoc(doc(db, 'bookings', id), { proId: user.uid, proName: profile.name, status: 'accepted' });
       setTab('main');
-    } catch (e) { console.error(e); alert("Failed to claim job."); }
+    } catch (e) { console.error(e); alert("Failed to claim job. Please check Firestore permissions."); }
   };
 
   const updateStatus = async (id, status) => {
-    if (!db) return;
     try { await updateDoc(doc(db, 'bookings', id), { status }); } catch (e) { console.error(e); }
   };
 
@@ -276,7 +271,6 @@ export default function App() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!auth || !db) return;
     return onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
@@ -291,7 +285,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!db) return;
     return onSnapshot(query(collection(db, 'bookings'), orderBy('createdAt', 'desc')), (s) => {
       setBookings(s.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -299,12 +292,11 @@ export default function App() {
 
   const handleBooking = async () => {
     if (!user) { setAuthModal({ open: true, mode: 'signup' }); return; }
-    if (!db) return;
     try {
       const payload = { job: selectedJob.name, price: selectedJob.price, ...bookingData, customerId: user.uid, status: 'pending', createdAt: Timestamp.now(), proId: null };
       await addDoc(collection(db, 'bookings'), payload);
       setBookingStep(3);
-    } catch (e) { console.error(e); alert("Failed to create booking."); }
+    } catch (e) { console.error(e); alert("Failed to create booking. Please check Firestore setup."); }
   };
 
   return (
@@ -313,7 +305,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LandingPage setSelectedService={setSelectedService} />} />
         <Route path="/dashboard" element={user ? <Dashboard user={user} profile={userProfile} bookings={bookings} /> : <Navigate to="/" />} />
-        <Route path="/booking/:id" element={<div className="p-40 text-center"><h1 className="text-4xl font-black">Chat system active.</h1></div>} />
+        <Route path="/booking/:id" element={<div className="p-40 text-center"><h1 className="text-4xl font-black tracking-tight">Real-time messaging active.</h1></div>} />
       </Routes>
       <AuthModal isOpen={authModal.open} onClose={() => setAuthModal({ ...authModal, open: false })} initialMode={authModal.mode} />
       <AnimatePresence>

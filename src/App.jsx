@@ -14,14 +14,17 @@ import {
 let db = null;
 let auth = null;
 try {
-  const firebaseConfig = JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG || '{}');
-  if (Object.keys(firebaseConfig).length > 0) {
+  const configString = process.env.REACT_APP_FIREBASE_CONFIG;
+  if (configString && configString.startsWith('{')) {
+    const firebaseConfig = JSON.parse(configString);
     const app = initializeApp(firebaseConfig);
     db = getFirestore(app);
     auth = getAuth(app);
+  } else {
+    console.warn("Firebase config not found or invalid format. Using simulation mode.");
   }
 } catch (e) {
-  console.warn("Firebase configuration is missing. Auth and data will be simulated.");
+  console.error("Firebase initialization failed:", e);
 }
 
 // --- CONSTANTS ---

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useParams, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, onSnapshot, query, doc, updateDoc, where, orderBy, getDoc, setDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, onSnapshot, query, doc, updateDoc, where, orderBy, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
 import { 
   Wrench, Zap, Sparkles, Hammer, Search, Star, ShieldCheck, Clock, CheckCircle2, X, 
@@ -11,21 +11,21 @@ import {
 } from 'lucide-react';
 
 // --- FIREBASE CONFIG ---
-let db = null;
-let auth = null;
-try {
-  const configString = process.env.REACT_APP_FIREBASE_CONFIG;
-  if (configString && configString.startsWith('{')) {
-    const firebaseConfig = JSON.parse(configString);
-    const app = initializeApp(firebaseConfig);
-    db = getFirestore(app);
-    auth = getAuth(app);
-  }
-} catch (e) {
-  console.warn("Firebase initialization failed. Using simulation mode.");
-}
+const firebaseConfig = {
+  apiKey: "AIzaSyDg1CHuDphsODoCi6GnxZH2T16L6S5RuhM",
+  authDomain: "service-flow-62ece.firebaseapp.com",
+  projectId: "service-flow-62ece",
+  storageBucket: "service-flow-62ece.firebasestorage.app",
+  messagingSenderId: "23717551992",
+  appId: "1:23717551992:web:f33301ddf4210c160cf28d",
+  measurementId: "G-XNXH0VQV5N"
+};
 
-// --- CONSTANTS & MOCK DATA ---
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+// --- CONSTANTS ---
 const SERVICES = [
   { id: 'plumbing', name: 'Plumbing', icon: Wrench, color: 'text-blue-500', bg: 'bg-blue-50', description: 'Leaks, clogs, installations, and repairs.' },
   { id: 'electrical', name: 'Electrical', icon: Zap, color: 'text-yellow-500', bg: 'bg-yellow-50', description: 'Wiring, fixtures, panels, and troubleshooting.' },
@@ -40,12 +40,6 @@ const JOBS = {
   handyman: [{ id: 'h1', name: 'TV Mounting', price: 110, estimatedTime: '1-2h' }, { id: 'h2', name: 'Furniture Assembly', price: 90, estimatedTime: '1-2h' }],
 };
 
-const MOCK_BOOKINGS = [
-  { id: 'mock1', job: 'Fix Leaky Sink', price: 120, address: '123 Main St, Austin TX', status: 'pending', date: 'Tomorrow', time: 'Morning', customerId: 'other', createdAt: new Date().toISOString() },
-  { id: 'mock2', job: 'Install Ceiling Fan', price: 180, address: '456 Oak Ave, Austin TX', status: 'pending', date: 'Wednesday', time: 'Afternoon', customerId: 'other', createdAt: new Date().toISOString() },
-  { id: 'mock3', job: 'Deep House Cleaning', price: 250, address: '789 Pine Rd, Austin TX', status: 'pending', date: 'Saturday', time: 'Morning', customerId: 'other', createdAt: new Date().toISOString() },
-];
-
 const getStatusColor = (status) => {
   switch (status) {
     case 'pending': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
@@ -57,7 +51,7 @@ const getStatusColor = (status) => {
 };
 
 // --- AUTH MODAL ---
-const AuthModal = ({ isOpen, onClose, initialMode = 'login', onAuthSuccess }) => {
+const AuthModal = ({ isOpen, onClose, initialMode = 'login' }) => {
   const [mode, setMode] = useState(initialMode);
   const [role, setRole] = useState('customer');
   const [formData, setFormData] = useState({ email: '', password: '', name: '' });
@@ -72,22 +66,17 @@ const AuthModal = ({ isOpen, onClose, initialMode = 'login', onAuthSuccess }) =>
     setLoading(true);
     
     try {
-      if (auth) {
-        if (mode === 'signup') {
-          const userCred = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-          await setDoc(doc(db, 'users', userCred.user.uid), {
-            uid: userCred.user.uid,
-            name: formData.name,
-            email: formData.email,
-            role: role,
-            createdAt: new Date().toISOString()
-          });
-        } else {
-          await signInWithEmailAndPassword(auth, formData.email, formData.password);
-        }
+      if (mode === 'signup') {
+        const userCred = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+        await setDoc(doc(db, 'users', userCred.user.uid), {
+          uid: userCred.user.uid,
+          name: formData.name,
+          email: formData.email,
+          role: role,
+          createdAt: Timestamp.now()
+        });
       } else {
-        // Simulation mode success
-        onAuthSuccess({ uid: 'sim-user', name: formData.name || 'Demo User', role: role });
+        await signInWithEmailAndPassword(auth, formData.email, formData.password);
       }
       onClose();
     } catch (err) {
@@ -152,10 +141,10 @@ const Navbar = ({ user, userProfile, openAuth }) => {
               <Link to="/dashboard" className="text-gray-600 hover:text-blue-600 font-bold transition-colors">Dashboard</Link>
               <div className="flex items-center gap-3 pl-6 border-l border-gray-100">
                 <div className="text-right hidden sm:block">
-                  <p className="text-xs font-black text-gray-900">{userProfile?.name}</p>
+                  <p className="text-xs font-black text-gray-900">{userProfile?.name || 'Loading...'}</p>
                   <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{userProfile?.role}</p>
                 </div>
-                <button onClick={() => auth ? signOut(auth) : window.location.reload()} className="p-2 text-gray-400 hover:text-red-500 transition-colors"><LogOut /></button>
+                <button onClick={() => signOut(auth)} className="p-2 text-gray-400 hover:text-red-500 transition-colors"><LogOut /></button>
               </div>
             </>
           ) : (
@@ -198,26 +187,18 @@ const LandingPage = ({ setSelectedService }) => (
   </div>
 );
 
-const Dashboard = ({ user, profile, bookings, setBookings }) => {
+const Dashboard = ({ user, profile, bookings }) => {
   const [tab, setTab] = useState('main');
-  const availableJobs = bookings.filter(b => b.status === 'pending' && (!b.proId || b.proId === 'other'));
+  const availableJobs = bookings.filter(b => b.status === 'pending' && !b.proId);
   const myJobs = profile?.role === 'customer' ? bookings.filter(b => b.customerId === user?.uid) : bookings.filter(b => b.proId === user?.uid);
 
   const claimJob = async (id) => {
-    if (db) {
-      await updateDoc(doc(db, 'bookings', id), { proId: user.uid, proName: profile.name, status: 'accepted' });
-    } else {
-      setBookings(bookings.map(b => b.id === id ? { ...b, proId: user.uid, proName: profile.name, status: 'accepted' } : b));
-    }
+    await updateDoc(doc(db, 'bookings', id), { proId: user.uid, proName: profile.name, status: 'accepted' });
     setTab('main');
   };
 
   const updateStatus = async (id, status) => {
-    if (db) {
-      await updateDoc(doc(db, 'bookings', id), { status });
-    } else {
-      setBookings(bookings.map(b => b.id === id ? { ...b, status } : b));
-    }
+    await updateDoc(doc(db, 'bookings', id), { status });
   };
 
   return (
@@ -246,7 +227,7 @@ const Dashboard = ({ user, profile, bookings, setBookings }) => {
                   <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-blue-500" /> {job.address}</div>
                   <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-orange-500" /> {job.date}</div>
                   {profile?.role === 'customer' && job.proId && <div className="flex items-center gap-2 font-black text-blue-600"><Briefcase className="w-4 h-4" /> Pro Assigned: {job.proName}</div>}
-                  {profile?.role === 'pro' && <div className="flex items-center gap-2 font-black text-orange-600"><User className="w-4 h-4" /> Client: {job.name || 'Demo Client'}</div>}
+                  {profile?.role === 'pro' && <div className="flex items-center gap-2 font-black text-orange-600"><User className="w-4 h-4" /> Client: {job.name}</div>}
                 </div>
               </div>
               <div className="flex items-center gap-6">
@@ -280,7 +261,7 @@ const Dashboard = ({ user, profile, bookings, setBookings }) => {
 export default function App() {
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
-  const [bookings, setBookings] = useState(MOCK_BOOKINGS);
+  const [bookings, setBookings] = useState([]);
   const [authModal, setAuthModal] = useState({ open: false, mode: 'login' });
   const [selectedService, setSelectedService] = useState(null);
   const [bookingStep, setBookingStep] = useState(0);
@@ -290,25 +271,21 @@ export default function App() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (auth) {
-      return onAuthStateChanged(auth, async (u) => {
-        setUser(u);
-        if (u) {
-          const d = await getDoc(doc(db, 'users', u.uid));
-          if (d.exists()) setUserProfile(d.data());
-        } else {
-          setUserProfile(null);
-        }
-      });
-    }
+    return onAuthStateChanged(auth, async (u) => {
+      setUser(u);
+      if (u) {
+        const d = await getDoc(doc(db, 'users', u.uid));
+        if (d.exists()) setUserProfile(d.data());
+      } else {
+        setUserProfile(null);
+      }
+    });
   }, []);
 
   useEffect(() => {
-    if (db) {
-      return onSnapshot(query(collection(db, 'bookings'), orderBy('createdAt', 'desc')), (s) => {
-        setBookings(s.docs.map(d => ({ id: d.id, ...d.data() })));
-      });
-    }
+    return onSnapshot(query(collection(db, 'bookings'), orderBy('createdAt', 'desc')), (s) => {
+      setBookings(s.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
   }, []);
 
   const handleBooking = async () => {
@@ -319,21 +296,11 @@ export default function App() {
       ...bookingData, 
       customerId: user.uid, 
       status: 'pending', 
-      createdAt: new Date().toISOString(), 
+      createdAt: Timestamp.now(), 
       proId: null 
     };
-
-    if (db) {
-      await addDoc(collection(db, 'bookings'), payload);
-    } else {
-      setBookings([{ id: Date.now().toString(), ...payload }, ...bookings]);
-    }
+    await addDoc(collection(db, 'bookings'), payload);
     setBookingStep(3);
-  };
-
-  const handleSimAuth = (profile) => {
-    setUser({ uid: profile.uid });
-    setUserProfile(profile);
   };
 
   return (
@@ -342,11 +309,11 @@ export default function App() {
       
       <Routes>
         <Route path="/" element={<LandingPage setSelectedService={setSelectedService} />} />
-        <Route path="/dashboard" element={user ? <Dashboard user={user} profile={userProfile} bookings={bookings} setBookings={setBookings} /> : <Navigate to="/" />} />
+        <Route path="/dashboard" element={user ? <Dashboard user={user} profile={userProfile} bookings={bookings} /> : <Navigate to="/" />} />
         <Route path="/booking/:id" element={<div className="p-40 text-center"><h1 className="text-4xl font-black">Chat system active.</h1><p className="text-gray-500 font-bold mt-4">Communication is enabled for this project. Manage it from your Dashboard.</p></div>} />
       </Routes>
 
-      <AuthModal isOpen={authModal.open} onClose={() => setAuthModal({ ...authModal, open: false })} initialMode={authModal.mode} onAuthSuccess={handleSimAuth} />
+      <AuthModal isOpen={authModal.open} onClose={() => setAuthModal({ ...authModal, open: false })} initialMode={authModal.mode} />
 
       <AnimatePresence>
         {selectedService && bookingStep === 0 && (
@@ -383,7 +350,7 @@ export default function App() {
               {bookingStep === 2 && (
                 <div className="space-y-6">
                   <h3 className="text-4xl font-black tracking-tight">Job Location</h3>
-                  <input type="text" placeholder="Full Name" value={bookingData.name} onChange={e => setBookingData({...bookingData, name: e.target.value})} className="w-full p-6 bg-gray-50 border-none rounded-2xl font-black focus:ring-4 focus:ring-blue-100 transition-all" />
+                  <input type="text" placeholder="Your Name" value={bookingData.name} onChange={e => setBookingData({...bookingData, name: e.target.value})} className="w-full p-6 bg-gray-50 border-none rounded-2xl font-black focus:ring-4 focus:ring-blue-100 transition-all" />
                   <input type="text" placeholder="Service Address" value={bookingData.address} onChange={e => setBookingData({...bookingData, address: e.target.value})} className="w-full p-6 bg-gray-50 border-none rounded-2xl font-black focus:ring-4 focus:ring-blue-100 transition-all" />
                   <button onClick={handleBooking} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-xl shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all mt-6">Confirm Booking</button>
                 </div>
